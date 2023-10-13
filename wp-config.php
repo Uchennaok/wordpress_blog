@@ -29,7 +29,7 @@ define( 'DB_USER', 'wordpressuche' );
 define( 'DB_PASSWORD', 'stackinc' );
 
 /** Database hostname */
-define( 'DB_HOST', 'wordpressuche.cxqraxk1plo6.us-east-1.rds.amazonaws.com' );
+define( 'DB_HOST', 'uchennawpblog.cccirtj0zdgb.us-east-1.rds.amazonaws.com' );
 
 /** Database charset to use in creating database tables. */
 define( 'DB_CHARSET', 'utf8' );

@@ -1,0 +1,141 @@
+pipeline {
+    agent any
+
+    environment {
+        VERSION = "1.0.${BUILD_NUMBER}"
+        PATH = "${PATH}:${getSonarPath()}:${getDockerPath()}"
+    }
+
+     stages {
+  //       stage ('Sonarcube Scan') {
+  //       steps {
+  //        script {
+  //         scannerHome = tool 'sonarqube'
+  //       }
+  //       withCredentials([string(credentialsId: 'SONAR_TOKEN', variable: 'SONAR_TOKEN')]){
+  //       withSonarQubeEnv('SonarQubeScanner') {
+  //         sh " ${scannerHome}/bin/sonar-scanner \
+  //         -Dsonar.projectKey=wp-uche-App-Uche   \
+  //         -Dsonar.login=${SONAR_TOKEN} "
+  //       }
+  //       }
+  //       }
+  //     }
+
+  //  stage('Quality Gate') {
+  //           steps {
+  //               timeout(time: 6, unit: 'MINUTES') {
+  //                   waitForQualityGate abortPipeline: true
+  //           }
+  //           }
+  //       }
+
+      stage ('Build Docker Image') {
+          steps {
+            sh '''
+            docker build . -t wp-uche-image:$VERSION
+            '''
+          }
+        }
+
+      stage ('Starting Docker Image') {
+          steps {
+              sh '''
+              if ( docker ps|grep wp-uche-cont ) then
+                 echo "Docker image exists, killing it"
+                 docker stop wp-uche-cont
+                 docker rm wp-uche-cont
+                 docker run --name wp-uche-cont  -p 80:80 -d wp-uche-image:$VERSION
+              else
+                 docker run --name wp-uche-cont  -p 80:80 -d wp-uche-image:$VERSION 
+              fi
+              '''
+          }
+        }
+
+      // stage ('Restore wp-uche Database') {
+      //     steps {
+      //         sh '''
+      //       python3 -m venv python3-virtualenv
+      //       source python3-virtualenv/bin/activate
+      //       python3 --version
+      //       pip3 install boto3 botocore boto
+      //       ansible-playbook $WORKSPACE/wp-uche_Retail_Repository/deploy_db_ansible/deploy_db.yml
+      //       deactivate
+
+      //         '''
+      //     }
+      //   }
+
+      // stage ('Configure DB Instance') {
+      //     steps {
+      //         sh '''
+      //          USERNAME='wordpressuser'
+      //          PASSWORD='W3lcome123'
+      //          DBNAME='wordpressdb'
+      //          SERVER_INSTANCE='wordpressdbwp-uchejenkins.cccirtj0zdgb.us-east-1.rds.amazonaws.com'
+      //          SERVER_IP=$(curl -s http://checkip.dyndns.org | sed -e 's/.*Current IP Address: //' -e 's/<.*$//')
+      //          SERVER_INSTANCE=${SERVER_INSTANCE}
+      //          echo "use wordpressdb;" >> $WORKSPACE/wp-uche_Retail_Repository/db.setup
+      //          echo "UPDATE wp_options SET option_value = '$SERVER_IP' WHERE option_name = 'siteurl'; UPDATE wp_options SET option_value = '$SERVER_IP' WHERE option_name = 'home';">> $WORKSPACE/wp-uche_Retail_Repository/db.setup
+      //          mysql -h $SERVER_INSTANCE -u $USERNAME -p$PASSWORD -D $DBNAME < $WORKSPACE/wp-uche_Retail_Repository/db.setup
+      //         '''
+      //     }
+      //   }
+
+      // stage ('Synthetic Test') {
+      //    steps {
+      //         sh '''
+      //         cd wp-uche_Retail_Repository
+      //         python synthetics.py
+      //         '''
+      //    }
+      //   }
+
+      stage ('Tear Down wp-uche Docker Image and Database') {
+          steps {
+             script {
+                def userInput = input(id: 'confirm', message: 'Tear Down Environment?', 
+                parameters: [ [$class: 'BooleanParameterDefinition', defaultValue: false, description: 'Tear Down Environment?', name: 'confirm'] ])
+             }
+              sh '''
+            python3 -m venv python3-virtualenv
+            source python3-virtualenv/bin/activate
+            python3 --version
+            pip3 install boto3 botocore boto
+            #ansible-playbook $WORKSPACE/wp-uche_Retail_Repository/deploy_db_ansible/delete_db.yml
+            deactivate
+            docker stop wp-uche-cont
+            docker rm  wp-uche-cont
+
+              '''
+          }
+        }
+
+      stage ('Log Into ECR and push the newly created Docker') {
+          steps {
+             script {
+                def userInput = input(id: 'confirm', message: 'Push Image To ECR?', 
+                parameters: [ [$class: 'BooleanParameterDefinition', defaultValue: false, description: 'Push to ECR?', name: 'confirm'] ])
+             }
+              sh '''
+                aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin 849633411233.dkr.ecr.us-east-1.amazonaws.com/wp-uche_repository
+                docker tag wp-uche-image:$VERSION 849633411233.dkr.ecr.us-east-1.amazonaws.com/wp-uche_repository:wp-uche-image-$VERSION
+                docker tag wp-uche-image:$VERSION 849633411233.dkr.ecr.us-east-1.amazonaws.com/wp-uche_repository:latest
+                docker push 849633411233.dkr.ecr.us-east-1.amazonaws.com/wp-uche_repository:wp-uche-image-$VERSION
+                docker push 849633411233.dkr.ecr.us-east-1.amazonaws.com/wp-uche_repository:latest
+              '''
+          }
+        }
+    }
+}
+
+def getSonarPath(){
+        def SonarHome= tool name: 'sonarqube', type: 'hudson.plugins.sonar.SonarRunnerInstallation'
+        return SonarHome
+    }
+def getDockerPath(){
+        def DockerHome= tool name: 'docker-inst', type: 'dockerTool'
+        return DockerHome
+    }
+    
